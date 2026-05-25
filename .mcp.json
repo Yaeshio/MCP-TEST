@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "onshape": {
+      "command": "npx",
+      "args": ["--yes", "onshape-mcp"]
+    }
+  }
+}

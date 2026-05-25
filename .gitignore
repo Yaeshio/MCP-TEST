@@ -1,0 +1,8 @@
+# 認証情報・設定ファイルは絶対にコミットしない
+*.env
+.env.*
+config.toml
+
+# OS
+.DS_Store
+Thumbs.db
