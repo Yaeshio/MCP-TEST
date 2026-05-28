@@ -2,6 +2,7 @@
 *.env
 .env.*
 config.toml
+.claude/settings.local.json
 
 # OS
 .DS_Store
