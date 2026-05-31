@@ -7,8 +7,7 @@ Usage:
         --features-file <path> \
         --did <DID> --wvm <w|v|m> --wvmid <WVMID> --eid <EID> \
         --timestamp <YYYY-MM-DD_HH-MM> \
-        [--stl-file <path>] \
-        [--stl-unavailable-reason <text>] \
+        [--json-output <path>] \
         [--output-dir docs/changelogs]
 
 stdout: 書き込んだ Markdown ファイルのパス（1 行）
@@ -33,10 +32,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--eid", required=True, help="エレメント ID")
     p.add_argument("--timestamp", required=True,
                    help="タイムスタンプ (YYYY-MM-DD_HH-MM)")
-    p.add_argument("--stl-file", default=None,
-                   help="書き込み済み STL ファイルのパス（省略時は「取得不可」として扱う）")
-    p.add_argument("--stl-unavailable-reason", default=None,
-                   help="STL 取得不可の理由テキスト")
+    p.add_argument("--json-output", default=None,
+                   help="生 JSON の保存先ファイルパス（省略時は保存しない）")
     p.add_argument("--output-dir", default="docs/changelogs",
                    help="Markdown 出力ディレクトリ（デフォルト: docs/changelogs）")
 
@@ -110,7 +107,7 @@ def compute_stats(features: list) -> dict:
     }
 
 
-def build_markdown(features: list, stats: dict, data: dict, args: argparse.Namespace) -> str:
+def build_markdown(features: list, stats: dict, args: argparse.Namespace) -> str:
     # タイムスタンプ変換: "2026-05-28_18-21" → "2026-05-28 18:21" / "2026-05-28T18:21:00Z"
     date_part, time_part = args.timestamp.split("_")
     hh, mm = time_part.split("-")
@@ -131,39 +128,14 @@ def build_markdown(features: list, stats: dict, data: dict, args: argparse.Names
 
     # サマリー
     types_str = ", ".join(stats["unique_types"]) if stats["unique_types"] else "（なし）"
+    json_ref = f"`{args.json_output}`" if args.json_output else "（保存なし）"
     summary = (
         "## サマリー\n\n"
         f"- 合計フィーチャー数: {stats['total']}\n"
         f"- 抑制済み: {stats['suppressed']}\n"
         f"- エラーあり: {stats['error_count']} 件（featureStatus が \"OK\" 以外）\n"
-        f"- 使用フィーチャータイプ: {types_str}"
-    )
-
-    # STL セクション
-    if args.stl_file:
-        stl_section = (
-            "## STL エクスポート\n\n"
-            f"**ファイル:** `{args.stl_file}`  \n"
-            "**単位:** millimeter  \n"
-            "**モード:** ASCII (text)"
-        )
-    else:
-        reason = args.stl_unavailable_reason or "アセンブリ形式またはエクスポートエラー"
-        stl_section = (
-            "## STL エクスポート\n\n"
-            f"**STL:** 取得不可（{reason}）"
-        )
-
-    # 生データ JSON
-    formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
-    raw_section = (
-        "## 生データ（JSON）\n\n"
-        "<details>\n"
-        "<summary>API レスポンス全文</summary>\n\n"
-        "```json\n"
-        f"{formatted_json}\n"
-        "```\n\n"
-        "</details>"
+        f"- 使用フィーチャータイプ: {types_str}\n"
+        f"- 生データ JSON: {json_ref}"
     )
 
     # ドキュメント組み立て
@@ -177,8 +149,6 @@ def build_markdown(features: list, stats: dict, data: dict, args: argparse.Names
         ),
         table,
         summary,
-        stl_section,
-        raw_section,
     ]) + "\n"
 
 
@@ -190,11 +160,21 @@ def write_output(content: str, output_dir: str, filename: str) -> str:
     return path
 
 
+def save_json(data: dict, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"JSON saved: {path}", file=sys.stderr)
+
+
 def main():
     args = parse_args()
 
     print(f"Loading features from: {args.features_file}", file=sys.stderr)
     data = load_response(args.features_file)
+
+    if args.json_output:
+        save_json(data, args.json_output)
 
     features = extract_features(data)
     print(f"Extracted {len(features)} features", file=sys.stderr)
@@ -205,7 +185,7 @@ def main():
         file=sys.stderr,
     )
 
-    md = build_markdown(features, stats, data, args)
+    md = build_markdown(features, stats, args)
 
     filename = f"{args.timestamp}-feature-snapshot.md"
     out_path = write_output(md, args.output_dir, filename)
